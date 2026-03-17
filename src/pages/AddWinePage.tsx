@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useWines } from '../hooks/useWines'
+import { useAuth } from '../hooks/useAuth'
 import { extractLabel, fetchReviews } from '../lib/api'
 import toast from 'react-hot-toast'
 
@@ -8,7 +9,7 @@ type Step = 'upload' | 'preview' | 'extracted' | 'reviewed'
 const STEPS = [
   { key: 'upload', label: 'Photo' },
   { key: 'preview', label: 'Analyze' },
-  { key: 'extracted', label: 'Reviews' },
+  { key: 'extracted', label: 'Details' },
   { key: 'reviewed', label: 'Save' },
 ]
 
@@ -25,6 +26,7 @@ function FieldRow({ label, value }: { label: string; value?: string | null }) {
 export default function AddWinePage() {
   const navigate = useNavigate()
   const { addWine } = useWines()
+  const { user } = useAuth()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [step, setStep] = useState<Step>('upload')
@@ -34,6 +36,7 @@ export default function AddWinePage() {
   const [reviews, setReviews] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
+  const [fetchingReviews, setFetchingReviews] = useState(false)
 
   const stepIdx = STEPS.findIndex(s => s.key === step)
 
@@ -64,26 +67,28 @@ export default function AddWinePage() {
     setLoading(false)
   }
 
-  const findReviews = async () => {
+  const handleFetchReviews = async () => {
     if (!extracted) return
-    setLoading(true)
-    setLoadingMsg('Searching Wine Spectator, Vivino, Decanter...')
+    setFetchingReviews(true)
     try {
-      setReviews(await fetchReviews(extracted))
+      const r = await fetchReviews(extracted)
+      setReviews(r)
+      setStep('reviewed')
     } catch {
       setReviews([])
+      setStep('reviewed')
     }
-    setStep('reviewed')
-    setLoading(false)
+    setFetchingReviews(false)
   }
 
-  const saveWine = async () => {
+  const saveWine = async (withReviews = false) => {
     if (!extracted) return
     setLoading(true)
+    setLoadingMsg('Saving to your cellar...')
     try {
       await addWine({
         id: crypto.randomUUID(),
-        user_id: '',
+        user_id: user?.id ?? 'guest',
         name: extracted.name ?? 'Unknown Wine',
         winery: extracted.winery ?? null,
         vintage: extracted.vintage ?? null,
@@ -95,7 +100,7 @@ export default function AddWinePage() {
         sweetness: extracted.sweetness ?? null,
         flavor_profile: extracted.flavorProfile ?? null,
         description: extracted.description ?? null,
-        reviews,
+        reviews: withReviews ? reviews : [],
         qty: 1,
         image_url: null,
         image_base64: imageBase64,
@@ -103,7 +108,7 @@ export default function AddWinePage() {
       } as any)
       navigate('/')
     } catch (e: any) {
-      toast.error(e.message)
+      toast.error(e.message || 'Failed to save wine.')
     }
     setLoading(false)
   }
@@ -177,8 +182,8 @@ export default function AddWinePage() {
           </div>
         )}
 
-        {/* EXTRACTED + REVIEWED */}
-        {(step === 'extracted' || step === 'reviewed') && extracted && (
+        {/* EXTRACTED — details + two options */}
+        {step === 'extracted' && extracted && (
           <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {imageBase64 && (
               <img
@@ -188,7 +193,6 @@ export default function AddWinePage() {
               />
             )}
 
-            {/* Label data */}
             <div className="card">
               <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: 0.8, marginBottom: 10 }}>✦ LABEL READ</div>
               <FieldRow label="Wine" value={extracted.name} />
@@ -204,54 +208,90 @@ export default function AddWinePage() {
               )}
             </div>
 
-            {/* Find reviews button */}
-            {step === 'extracted' && (
-              <button className="btn btn-primary btn-full" onClick={findReviews} disabled={loading}>
-                {loading ? <><span className="spinner" />&nbsp;{loadingMsg}</> : '🔍 Find Reviews Online'}
+            <div style={{ background: 'var(--navy-light)', borderRadius: 'var(--r-lg)', padding: 16, border: '1px solid var(--border)' }}>
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12, textAlign: 'center' }}>
+                What would you like to do?
+              </p>
+              <button
+                className="btn btn-primary btn-full"
+                onClick={() => saveWine(false)}
+                disabled={loading}
+                style={{ marginBottom: 10 }}
+              >
+                {loading ? <><span className="spinner" />&nbsp;{loadingMsg}</> : '🍷 Add to Cellar Now'}
               </button>
-            )}
-
-            {/* Reviews + save */}
-            {step === 'reviewed' && (
-              <>
-                {reviews.length > 0 && (
-                  <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: 0.8, marginBottom: 2 }}>✦ CRITICAL REVIEWS</div>
-                    {reviews.map((r, i) => (
-                      <div key={i} style={{ background: 'var(--navy-surf)', borderRadius: 'var(--r-sm)', padding: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                          <span style={{ fontSize: 10, color: 'var(--gold)', fontWeight: 700, letterSpacing: 0.6 }}>{r.source}</span>
-                          {r.score && (
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
-                              <span className="serif" style={{ fontSize: 22, color: 'var(--text)' }}>{r.score}</span>
-                              <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>/100</span>
-                            </div>
-                          )}
-                        </div>
-                        <p style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5, fontStyle: 'italic' }}>"{r.quote}"</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Save button — always visible */}
-                <div style={{ background: 'var(--navy)', borderRadius: 'var(--r-lg)', padding: 16, border: '1px solid var(--border)' }}>
-                  <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12, textAlign: 'center' }}>
-                    Ready to add <strong style={{ color: 'var(--text)' }}>{extracted.name}</strong> to your cellar?
-                  </p>
-                  <button
-                    className="btn btn-primary btn-full"
-                    onClick={saveWine}
-                    disabled={loading}
-                    style={{ fontSize: 16 }}
-                  >
-                    {loading ? <><span className="spinner" />&nbsp;Saving...</> : '🍷 Add to Cellar'}
-                  </button>
-                </div>
-              </>
-            )}
+              <button
+                className="btn btn-outline btn-full"
+                onClick={handleFetchReviews}
+                disabled={fetchingReviews}
+              >
+                {fetchingReviews ? <><span className="spinner" />&nbsp;Searching reviews...</> : '🔍 Find Reviews First'}
+              </button>
+            </div>
           </div>
         )}
+
+        {/* REVIEWED — reviews + save */}
+        {step === 'reviewed' && extracted && (
+          <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {imageBase64 && (
+              <img
+                src={`data:${imageMimeType};base64,${imageBase64}`}
+                alt="Label"
+                style={{ width: '100%', height: 160, objectFit: 'contain', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'var(--navy-surf)' }}
+              />
+            )}
+
+            <div className="card">
+              <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: 0.8, marginBottom: 10 }}>✦ LABEL READ</div>
+              <FieldRow label="Wine" value={extracted.name} />
+              <FieldRow label="Winery" value={extracted.winery} />
+              <FieldRow label="Vintage" value={extracted.vintage} />
+              <FieldRow label="Varietal" value={extracted.varietal} />
+              <FieldRow label="Type" value={extracted.type} />
+            </div>
+
+            {reviews.length > 0 && (
+              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: 0.8, marginBottom: 2 }}>✦ CRITICAL REVIEWS</div>
+                {reviews.map((r, i) => (
+                  <div key={i} style={{ background: 'var(--navy-surf)', borderRadius: 'var(--r-sm)', padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 10, color: 'var(--gold)', fontWeight: 700, letterSpacing: 0.6 }}>{r.source}</span>
+                      {r.score && (
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
+                          <span className="serif" style={{ fontSize: 22, color: 'var(--text)' }}>{r.score}</span>
+                          <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>/100</span>
+                        </div>
+                      )}
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5, fontStyle: 'italic' }}>"{r.quote}"</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {reviews.length === 0 && (
+              <p style={{ textAlign: 'center', padding: '12px 0', color: 'var(--text-dim)', fontSize: 13 }}>
+                No reviews found for this wine.
+              </p>
+            )}
+
+            <div style={{ background: 'var(--navy-light)', borderRadius: 'var(--r-lg)', padding: 16, border: '1px solid var(--border)' }}>
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12, textAlign: 'center' }}>
+                Ready to add <strong style={{ color: 'var(--text)' }}>{extracted.name}</strong> to your cellar?
+              </p>
+              <button
+                className="btn btn-primary btn-full"
+                onClick={() => saveWine(true)}
+                disabled={loading}
+              >
+                {loading ? <><span className="spinner" />&nbsp;{loadingMsg}</> : '🍷 Add to Cellar'}
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   )
