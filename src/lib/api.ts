@@ -263,41 +263,42 @@ export async function getExternalRecommendations(
 ) {
   const inventoryNames = inventory.map(w => w.name).join(', ')
 
-  const data = await callClaude(
-    [{
-      role: 'user',
-      content: `You are a master sommelier. A user is hosting an event with these preferences:
+  const data = await callClaude([{
+    role: 'user',
+    content: `You are a master sommelier. A user is hosting an event with these preferences:
 
 ${Object.entries(prefs)
   .filter(([, vals]) => vals && (vals as string[]).length > 0)
   .map(([key, vals]) => `- ${key}: ${(vals as string[]).join(', ')}`)
   .join('\n')}
 
-They already own these wines: ${inventoryNames || 'none'}
+They already own: ${inventoryNames || 'none'}
 
-Recommend 3 wines they could BUY for this event that they do not already own. These should be excellent matches for ALL the event factors above.
+Recommend exactly 3 specific wines to BUY that perfectly match ALL the event factors above. Do NOT recommend wines they already own.
 
-For each wine, search for current purchase links at Total Wine & More (totalwine.com), BevMo (bevmo.com), or Wine.com as first preferences. If not found there, use any major reputable retailer.
+For each wine, construct a Total Wine search URL in this format:
+https://www.totalwine.com/search/all?text=WINE+NAME+HERE
 
-Return ONLY a valid JSON array (no markdown):
+Replace spaces with + in the search query. For example:
+- "Caymus Cabernet Sauvignon" → https://www.totalwine.com/search/all?text=Caymus+Cabernet+Sauvignon
+- "Kim Crawford Sauvignon Blanc" → https://www.totalwine.com/search/all?text=Kim+Crawford+Sauvignon+Blanc
+
+Return ONLY a valid JSON array (no markdown, no backticks, no explanation outside the JSON):
 [{
   "name": "full wine name",
-  "winery": "producer",
+  "winery": "producer name",
   "vintage": "year or NV",
-  "type": "red/white/rose/sparkling/dessert",
+  "type": "red or white or rose or sparkling or dessert",
   "varietal": "grape variety",
   "region": "region, country",
-  "price": "$XX",
-  "rating": "XX pts (Source) or null",
-  "reason": "3-4 sentences explaining exactly why this wine is perfect for THIS specific event — mention food pairing, occasion, time of day, body and sweetness match explicitly",
-  "purchaseUrl": "https://www.totalwine.com/... or https://www.bevmo.com/... or https://www.wine.com/...",
+  "price": "estimated price e.g. $18-25",
+  "rating": "e.g. 92 pts Wine Spectator",
+  "reason": "3-4 sentences explaining exactly why this wine is perfect for THIS specific event — mention the food pairing, occasion, time of day, and body/sweetness match explicitly",
+  "purchaseUrl": "https://www.totalwine.com/search/all?text=Wine+Name+Here",
   "retailer": "Total Wine & More"
 }]`
-    }],
-    [{ type: 'web_search_20250305', name: 'web_search' }]
-  )
+  }])
 
   const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '[]'
   try { return parseJSON(text) } catch { return [] }
 }
-
