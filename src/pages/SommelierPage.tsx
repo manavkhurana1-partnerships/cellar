@@ -157,11 +157,16 @@ export default function SommelierPage() {
             )}
 
             {/* No results */}
-            {recs && recs.length === 0 && (
-              <p style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-dim)', fontSize: 13 }}>
-                No strong matches. Try adjusting your preferences.
-              </p>
-            )}
+          {recs && recs.length === 0 && (
+  <div style={{ textAlign: 'center', padding: '32px 20px', background: 'var(--navy-light)', borderRadius: 'var(--r-lg)', border: '1px solid var(--border)', marginTop: 16 }}>
+    <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>🚫</div>
+    <h3 className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>No wines available for this event</h3>
+    <p style={{ fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 16 }}>
+      None of your current wines are a good match for these specific preferences. Try adjusting the food, body, or sweetness preferences — or add more wines to your cellar.
+    </p>
+    <button className="btn btn-outline btn-sm" onClick={() => navigate('/add')}>Add More Wines</button>
+  </div>
+)}
 
             {/* Recommendations */}
             {recs && recs.length > 0 && (
@@ -195,23 +200,32 @@ export default function SommelierPage() {
                       </div>
 
                       {/* Body */}
-                      <div style={{ padding: 16 }}>
-                        <div style={{ display: 'inline-flex', padding: '3px 10px', borderRadius: 'var(--r-full)', background: tc.bg, border: `1px solid ${tc.text}55`, marginBottom: 8 }}>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: tc.text, textTransform: 'uppercase', letterSpacing: 0.8 }}>{wine.type}</span>
-                        </div>
-                        <h3 className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 4 }}>{wine.name}</h3>
-                        <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12 }}>
-                          {[wine.winery, wine.vintage].filter(Boolean).join(' · ')}
-                        </p>
-                        <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 'var(--r-sm)', padding: 10, marginBottom: 10 }}>
-                          <p style={{ fontSize: 12, color: 'var(--cream-dim)', lineHeight: 1.6 }}>{rec.reason}</p>
-                        </div>
-                        {rec.reviewHighlight && (
-                          <p style={{ fontSize: 11, color: 'var(--gold)', fontStyle: 'italic' }}>"{rec.reviewHighlight}"</p>
-                        )}
-                        <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 10 }}>Tap to view full details →</p>
-                      </div>
-                    </div>
+                    <div style={{ padding: 16 }}>
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+    <div style={{ display: 'inline-flex', padding: '3px 10px', borderRadius: 'var(--r-full)', background: tc.bg, border: `1px solid ${tc.text}55` }}>
+      <span style={{ fontSize: 9, fontWeight: 700, color: tc.text, textTransform: 'uppercase', letterSpacing: 0.8 }}>{wine.type}</span>
+    </div>
+    {rec.matchScore && (
+      <span style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, background: 'rgba(201,168,76,0.1)', padding: '3px 10px', borderRadius: 'var(--r-full)', border: '1px solid rgba(201,168,76,0.3)' }}>
+        {rec.matchScore}% match
+      </span>
+    )}
+  </div>
+  <h3 className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 4 }}>{wine.name}</h3>
+  <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12 }}>
+    {[wine.winery, wine.vintage].filter(Boolean).join(' · ')}
+  </p>
+  <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 'var(--r-sm)', padding: 10, marginBottom: 8 }}>
+    <p style={{ fontSize: 12, color: 'var(--cream-dim)', lineHeight: 1.6 }}>{rec.reason}</p>
+  </div>
+  {rec.whyNotOthers && (
+    <p style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 6 }}>vs others: {rec.whyNotOthers}</p>
+  )}
+  {rec.reviewHighlight && (
+    <p style={{ fontSize: 11, color: 'var(--gold)', fontStyle: 'italic' }}>"{rec.reviewHighlight}"</p>
+  )}
+  <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 10 }}>Tap to view full details →</p>
+</div>
                   )
                 })}
 
