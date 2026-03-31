@@ -319,16 +319,14 @@ export default function SommelierPage() {
                             </div>
 
                             {rec.purchaseUrl && (
-                              
-                                href={rec.purchaseUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'var(--gold)', color: 'var(--navy)', borderRadius: 'var(--r-full)', padding: '12px 20px', textDecoration: 'none', fontWeight: 700, fontSize: 14, transition: 'opacity 0.2s' }}
-                                onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = '0.85' }}
-                                onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = '1' }}
+                              <button
+                                onClick={() => window.open(rec.purchaseUrl, '_blank')}
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'var(--gold)', color: 'var(--navy)', borderRadius: 'var(--r-full)', padding: '12px 20px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, width: '100%', transition: 'opacity 0.2s' }}
+                                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.85' }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}
                               >
-                                🛒 Buy at {rec.retailer || 'Online'}
-                              </a>
+                                {'🛒 Buy at ' + (rec.retailer || 'Online')}
+                              </button>
                             )}
                           </div>
                         </div>
