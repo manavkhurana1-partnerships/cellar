@@ -256,3 +256,48 @@ If nothing fits, return exactly: []`
   const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '[]'
   try { return parseJSON(text) } catch { return [] }
 }
+
+export async function getExternalRecommendations(
+  prefs: Record<string, string[]>,
+  inventory: any[]
+) {
+  const inventoryNames = inventory.map(w => w.name).join(', ')
+
+  const data = await callClaude(
+    [{
+      role: 'user',
+      content: `You are a master sommelier. A user is hosting an event with these preferences:
+
+${Object.entries(prefs)
+  .filter(([, vals]) => vals && (vals as string[]).length > 0)
+  .map(([key, vals]) => `- ${key}: ${(vals as string[]).join(', ')}`)
+  .join('\n')}
+
+They already own these wines: ${inventoryNames || 'none'}
+
+Recommend 3 wines they could BUY for this event that they do not already own. These should be excellent matches for ALL the event factors above.
+
+For each wine, search for current purchase links at Total Wine & More (totalwine.com), BevMo (bevmo.com), or Wine.com as first preferences. If not found there, use any major reputable retailer.
+
+Return ONLY a valid JSON array (no markdown):
+[{
+  "name": "full wine name",
+  "winery": "producer",
+  "vintage": "year or NV",
+  "type": "red/white/rose/sparkling/dessert",
+  "varietal": "grape variety",
+  "region": "region, country",
+  "price": "$XX",
+  "rating": "XX pts (Source) or null",
+  "reason": "3-4 sentences explaining exactly why this wine is perfect for THIS specific event — mention food pairing, occasion, time of day, body and sweetness match explicitly",
+  "purchaseUrl": "https://www.totalwine.com/... or https://www.bevmo.com/... or https://www.wine.com/...",
+  "retailer": "Total Wine & More"
+}]`
+    }],
+    [{ type: 'web_search_20250305', name: 'web_search' }]
+  )
+
+  const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '[]'
+  try { return parseJSON(text) } catch { return [] }
+}
+
