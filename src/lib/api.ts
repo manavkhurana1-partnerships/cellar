@@ -198,16 +198,59 @@ export async function getRecommendations(
     sweetness: w.sweetness,
     topScore: w.reviews?.[0]?.score ?? null,
     flavorProfile: w.flavor_profile,
+    description: w.description,
+    varietal: w.varietal,
+    region: w.region,
   }))
 
   const data = await callClaude([{
     role: 'user',
-    content: `You are a master sommelier.
-Event preferences: ${JSON.stringify(prefs)}
-Wine inventory: ${JSON.stringify(summary)}
-Recommend 2-3 wines from the inventory. Return ONLY a JSON array (no markdown):
-[{"id": "wine_id", "reason": "2-3 sentences why it fits", "reviewHighlight": "1 sentence about quality"}]
-Rank best first. Only use wines from the inventory.`
+    content: `You are a master sommelier with decades of experience pairing wines for events. Be STRICT and PRECISE.
+
+EVENT PREFERENCES:
+${Object.entries(prefs)
+  .filter(([, vals]) => vals && (vals as string[]).length > 0)
+  .map(([key, vals]) => `- ${key}: ${(vals as string[]).join(', ')}`)
+  .join('\n')}
+
+WINE INVENTORY:
+${JSON.stringify(summary, null, 2)}
+
+YOUR TASK:
+Carefully analyze EVERY wine against ALL the event preferences above. Consider:
+
+1. TIME OF DAY — Light, crisp whites and sparkling suit daytime. Bold reds suit evening/late night.
+2. SETTING — Formal events call for structured, classic wines. Casual means easy-drinking styles.
+3. FOOD PAIRING — This is critical. Specific rules:
+   - Red meat → full-bodied reds like Cabernet, Malbec, Syrah
+   - Seafood → crisp whites like Sauvignon Blanc, Pinot Grigio, Chablis. NEVER recommend full red with seafood.
+   - Charcuterie & Cheese → versatile: Champagne, Pinot Noir, Chardonnay
+   - Spicy food → off-dry or sweet wines like Riesling, Gewürztraminer. AVOID high tannin reds.
+   - Pasta & Grains → medium reds like Sangiovese, Barbera, or medium whites
+   - Desserts → sweet wines only. NEVER recommend dry wines with desserts.
+   - No food → any style works, prioritize by occasion and time
+4. OCCASION — Romantic Evening: elegant, complex wines. Celebration: sparkling preferred. Business/Networking: crowd-pleasing, not too bold. Casual Hangout: easy-drinking, approachable.
+5. BODY PREFERENCE — If user says Light, DO NOT recommend Full-bodied wines. Respect this strictly.
+6. SWEETNESS PREFERENCE — If user says Dry, DO NOT recommend sweet wines. Be strict.
+
+STRICT RULES:
+- Only recommend wines that genuinely match the event. 
+- If a wine conflicts with ANY critical factor (especially food pairing or sweetness), exclude it completely.
+- If NO wines in the inventory are appropriate, return an empty array [].
+- Do NOT force recommendations just to have something to suggest.
+- Maximum 3 recommendations, minimum 1 (or 0 if nothing fits).
+- Rank by best overall fit across ALL factors, not just one.
+
+Return ONLY a JSON array (no markdown, no explanation):
+[{
+  "id": "exact_wine_id",
+  "matchScore": 95,
+  "reason": "3-4 sentences explaining specifically why this wine fits THIS event — mention the food, occasion, time, and body/sweetness match explicitly",
+  "whyNotOthers": "1 sentence on why this ranks above the other options",
+  "reviewHighlight": "1 sentence about the wine's quality or critical reception"
+}]
+
+If nothing fits, return exactly: []`
   }])
 
   const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '[]'
