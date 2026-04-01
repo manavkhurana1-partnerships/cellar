@@ -46,7 +46,6 @@ export default function AddWinePage() {
   const [cameraActive, setCameraActive] = useState(false)
   const [scanning, setScanning] = useState(false)
 
-  // Clean up camera on unmount
   useEffect(() => {
     return () => { stopCamera() }
   }, [])
@@ -60,85 +59,52 @@ export default function AddWinePage() {
     setScanning(false)
   }
 
- const startBarcodeCamera = async () => {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' }
-    })
-    streamRef.current = stream
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream
-      await videoRef.current.play()
-    }
-    setCameraActive(true)
-    setScanning(true)
-  } catch (e) {
-    toast.error('Camera access denied. Please type the barcode number manually.')
-  }
-}
-
-const captureAndDecodeBarcode = async () => {
-  if (!videoRef.current) return
-  const canvas = document.createElement('canvas')
-  canvas.width = videoRef.current.videoWidth
-  canvas.height = videoRef.current.videoHeight
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(videoRef.current, 0, 0)
-
-  // Load ZXing
-  if (!(window as any).ZXing) {
-    const script = document.createElement('script')
-    script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js'
-    await new Promise<void>(r => { script.onload = () => r(); document.head.appendChild(script) })
-  }
-
-  try {
-    const ZXing = (window as any).ZXing
-    const reader = new ZXing.BrowserMultiFormatReader()
-    const result = await reader.decodeFromCanvas(canvas)
-    if (result?.text) {
-      stopCamera()
-      setUpcInput(result.text)
-      handleUPCLookup(result.text)
-    } else {
-      toast.error('No barcode detected. Try holding still and tapping Scan again.')
-    }
-  } catch {
-    toast.error('No barcode found. Move closer and tap Scan again.')
-  }
-}
-
-    const Quagga = (window as any).Quagga
-    if (!Quagga || !videoRef.current) return
-
-    Quagga.init({
-      inputStream: {
-        type: 'LiveStream',
-        target: videoRef.current,
-        constraints: { facingMode: 'environment' }
-      },
-      decoder: {
-        readers: ['ean_reader', 'upc_reader', 'upc_e_reader', 'ean_8_reader']
-      },
-      locate: true,
-    }, (err: any) => {
-      if (err) {
-        toast.error('Barcode scanner failed. Please type the number manually.')
-        stopCamera()
-        return
+  const startBarcodeCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
       }
-      Quagga.start()
-    })
+      setCameraActive(true)
+      setScanning(true)
+    } catch (e) {
+      toast.error('Camera access denied. Please type the barcode number manually.')
+    }
+  }
 
-    Quagga.onDetected((result: any) => {
-      const code = result?.codeResult?.code
-      if (code && code.length >= 8) {
-        Quagga.stop()
+  const captureAndDecodeBarcode = async () => {
+    if (!videoRef.current) return
+    const canvas = document.createElement('canvas')
+    canvas.width = videoRef.current.videoWidth
+    canvas.height = videoRef.current.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(videoRef.current, 0, 0)
+
+    if (!(window as any).ZXing) {
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js'
+      await new Promise<void>(r => { script.onload = () => r(); document.head.appendChild(script) })
+    }
+
+    try {
+      const ZXing = (window as any).ZXing
+      const reader = new ZXing.BrowserMultiFormatReader()
+      const result = await reader.decodeFromCanvas(canvas)
+      if (result?.text) {
         stopCamera()
-        setUpcInput(code)
-        handleUPCLookup(code)
+        setUpcInput(result.text)
+        handleUPCLookup(result.text)
+      } else {
+        toast.error('No barcode detected. Try holding still and tap Scan again.')
       }
-    })
+    } catch {
+      toast.error('No barcode found. Move closer and tap Scan again.')
+    }
   }
 
   const handleFile = (file: File) => {
@@ -237,43 +203,37 @@ const captureAndDecodeBarcode = async () => {
     setScanMode('label')
   }
 
+  const stepIdx = STEPS.findIndex(s => s.key === step)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
-      {/* Header */}
       <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <button className="btn btn-ghost btn-sm" onClick={() => { reset(); navigate('/') }} style={{ padding: '6px 0', fontSize: 24, lineHeight: 1 }}>‹</button>
         <h1 className="serif" style={{ fontSize: 20, color: 'var(--text)', fontWeight: 400 }}>Add a Wine</h1>
       </div>
 
-      {/* Step indicator */}
       <div className="steps" style={{ flexShrink: 0 }}>
-        {STEPS.map((s, i) => {
-          const stepIdx = STEPS.findIndex(st => st.key === step)
-          return (
-            <div key={s.key} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                <div className={'step-dot' + (i < stepIdx ? ' done' : i === stepIdx ? ' active' : '')}>
-                  {i < stepIdx ? '✓' : i + 1}
-                </div>
-                <span className={'step-label' + (i <= stepIdx ? ' active' : '')}>{s.label}</span>
+        {STEPS.map((s, i) => (
+          <div key={s.key} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <div className={'step-dot' + (i < stepIdx ? ' done' : i === stepIdx ? ' active' : '')}>
+                {i < stepIdx ? '✓' : i + 1}
               </div>
-              {i < STEPS.length - 1 && (
-                <div className={'step-line' + (i < stepIdx ? ' done' : '')} style={{ flex: 1, margin: '0 6px', marginBottom: 18 }} />
-              )}
+              <span className={'step-label' + (i <= stepIdx ? ' active' : '')}>{s.label}</span>
             </div>
-          )
-        })}
+            {i < STEPS.length - 1 && (
+              <div className={'step-line' + (i < stepIdx ? ' done' : '')} style={{ flex: 1, margin: '0 6px', marginBottom: 18 }} />
+            )}
+          </div>
+        ))}
       </div>
 
-      {/* Scrollable content */}
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' as any, padding: '20px 20px 120px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* UPLOAD */}
         {step === 'upload' && (
           <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-            {/* Mode toggle */}
             <div style={{ display: 'flex', background: 'var(--navy-light)', borderRadius: 'var(--r-md)', padding: 3, gap: 3 }}>
               {(['label', 'barcode'] as ScanMode[]).map(mode => (
                 <button key={mode} onClick={() => { setScanMode(mode); stopCamera() }} style={{
@@ -288,7 +248,6 @@ const captureAndDecodeBarcode = async () => {
               ))}
             </div>
 
-            {/* Label scan */}
             {scanMode === 'label' && (
               <div
                 onClick={() => fileRef.current?.click()}
@@ -301,17 +260,14 @@ const captureAndDecodeBarcode = async () => {
                 <div style={{ fontSize: 40, marginBottom: 10, opacity: 0.6 }}>📷</div>
                 <p className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 6 }}>Photograph a Label</p>
                 <p style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>
-                  Free OCR reads the label text, then AI structures the wine data
+                  Free OCR reads the label, then AI structures the wine data
                 </p>
               </div>
             )}
 
-            {/* Barcode scan */}
             {scanMode === 'barcode' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-                {/* Live camera viewfinder */}
-                {!cameraActive && (
+                {!cameraActive ? (
                   <div
                     onClick={startBarcodeCamera}
                     style={{ background: 'var(--navy-light)', border: '2px dashed var(--border)', borderRadius: 'var(--r-lg)', padding: '44px 24px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
@@ -321,53 +277,47 @@ const captureAndDecodeBarcode = async () => {
                     <div style={{ fontSize: 40, marginBottom: 10, opacity: 0.6 }}>📦</div>
                     <p className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 6 }}>Scan Barcode</p>
                     <p style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>
-                      Tap to open camera and point at the UPC barcode on the bottle
+                      Tap to open camera and point at the UPC barcode
                     </p>
                   </div>
-                )}
-
-                {/* Camera viewfinder */}
-                {cameraActive && (
+                ) : (
                   <div style={{ position: 'relative', borderRadius: 'var(--r-lg)', overflow: 'hidden', background: '#000' }}>
                     <video
                       ref={videoRef}
-                      style={{ width: '100%', height: 260, objectFit: 'cover', display: 'block' }}
+                      style={{ width: '100%', height: 280, objectFit: 'cover', display: 'block' }}
                       playsInline
                       muted
                     />
-                    {/* Barcode aim guide */}
                     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                      <div style={{ width: '70%', height: 80, border: '2px solid var(--gold)', borderRadius: 8, boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }} />
+                      <div style={{ width: '75%', height: 90, border: '2px solid var(--gold)', borderRadius: 8, boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)' }} />
                     </div>
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '10px 16px', background: 'rgba(0,0,0,0.6)', textAlign: 'center' }}>
-                    <button
-  onClick={captureAndDecodeBarcode}
-  style={{ background: 'var(--gold)', color: 'var(--navy)', border: 'none', borderRadius: 'var(--r-full)', padding: '8px 24px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
->
-  📸 Scan Barcode
-</button>
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 16px', background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <button
+                        onClick={stopCamera}
+                        style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 'var(--r-full)', color: 'var(--text-dim)', padding: '7px 16px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={captureAndDecodeBarcode}
+                        style={{ background: 'var(--gold)', color: 'var(--navy)', border: 'none', borderRadius: 'var(--r-full)', padding: '8px 24px', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+                      >
+                        📸 Scan Now
+                      </button>
                     </div>
-                    <button
-                      onClick={stopCamera}
-                      style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border)', borderRadius: 'var(--r-full)', color: 'var(--text)', padding: '6px 12px', cursor: 'pointer', fontSize: 12 }}
-                    >
-                      Cancel
-                    </button>
                   </div>
                 )}
 
-                {/* Divider */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div className="divider" style={{ flex: 1, margin: 0 }} />
-                  <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>or type it manually</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>or type manually</span>
                   <div className="divider" style={{ flex: 1, margin: 0 }} />
                 </div>
 
-                {/* Manual UPC input */}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     className="input"
-                    placeholder="Enter UPC barcode number..."
+                    placeholder="Enter UPC number..."
                     value={upcInput}
                     onChange={e => setUpcInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleUPCLookup()}
@@ -389,7 +339,7 @@ const captureAndDecodeBarcode = async () => {
 
                 <div style={{ background: 'var(--navy-light)', borderRadius: 'var(--r-md)', padding: 12, border: '1px solid var(--border)' }}>
                   <p style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.6 }}>
-                    💡 The UPC barcode is the black-and-white striped barcode on the back or bottom of the bottle. Most wine barcodes start with 0 and are 12 digits long.
+                    💡 The UPC is the striped barcode on the back or bottom of the bottle. Most wine barcodes are 12 digits.
                   </p>
                 </div>
               </div>
@@ -397,7 +347,6 @@ const captureAndDecodeBarcode = async () => {
           </div>
         )}
 
-        {/* PREVIEW */}
         {step === 'preview' && imageBase64 && (
           <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <img
@@ -408,20 +357,17 @@ const captureAndDecodeBarcode = async () => {
             {loading ? (
               <div style={{ textAlign: 'center', padding: '8px 0' }}>
                 <div className="spinner" style={{ margin: '0 auto 8px' }} />
-                <p style={{ fontSize: 12, color: 'var(--gold)', fontStyle: 'italic' }}>{loadingMsg}</p>
+                <p style={{ fontSize: 12, color: 'var(--gold)', fontStyle: 'italic' }}>{loadingMsg || 'Analyzing...'}</p>
               </div>
             ) : (
               <>
-                <button className="btn btn-primary btn-full" onClick={analyzeLabel}>
-                  ✦ Analyze Label
-                </button>
+                <button className="btn btn-primary btn-full" onClick={analyzeLabel}>✦ Analyze Label</button>
                 <button className="btn btn-outline btn-full" onClick={reset}>Retake Photo</button>
               </>
             )}
           </div>
         )}
 
-        {/* EXTRACTED */}
         {step === 'extracted' && extracted && (
           <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {imageBase64 && (
@@ -448,16 +394,19 @@ const captureAndDecodeBarcode = async () => {
             <div style={{ background: 'var(--navy-light)', borderRadius: 'var(--r-lg)', padding: 16, border: '1px solid var(--border)' }}>
               <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12, textAlign: 'center' }}>What would you like to do?</p>
               <button className="btn btn-primary btn-full" onClick={() => saveWine(false)} disabled={loading} style={{ marginBottom: 10 }}>
-                {loading ? <span style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}><span className="spinner" />{loadingMsg}</span> : '🍷 Add to Cellar Now'}
+                {loading
+                  ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><span className="spinner" />{loadingMsg}</span>
+                  : '🍷 Add to Cellar Now'}
               </button>
               <button className="btn btn-outline btn-full" onClick={handleFetchReviews} disabled={fetchingReviews}>
-                {fetchingReviews ? <span style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}><span className="spinner" />Searching reviews...</span> : '🔍 Find Reviews First'}
+                {fetchingReviews
+                  ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><span className="spinner" />Searching reviews...</span>
+                  : '🔍 Find Reviews First'}
               </button>
             </div>
           </div>
         )}
 
-        {/* REVIEWED */}
         {step === 'reviewed' && extracted && (
           <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {imageBase64 && (
@@ -502,7 +451,9 @@ const captureAndDecodeBarcode = async () => {
                 Ready to add <strong style={{ color: 'var(--text)' }}>{extracted.name}</strong> to your cellar?
               </p>
               <button className="btn btn-primary btn-full" onClick={() => saveWine(true)} disabled={loading}>
-                {loading ? <span style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}><span className="spinner" />{loadingMsg}</span> : '🍷 Add to Cellar'}
+                {loading
+                  ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><span className="spinner" />{loadingMsg}</span>
+                  : '🍷 Add to Cellar'}
               </button>
             </div>
           </div>
