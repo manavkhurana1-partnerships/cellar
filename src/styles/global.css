@@ -194,3 +194,14 @@ body {
 
 img { display: block; max-width: 100%; }
 .screen { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+
+/* iOS safe area fixes */
+.app-header-safe {
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+
+@supports not (padding: env(safe-area-inset-top)) {
+  .app {
+    padding-top: 44px;
+  }
+}
