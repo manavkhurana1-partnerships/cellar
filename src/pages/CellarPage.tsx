@@ -46,7 +46,7 @@ export default function CellarPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ padding: 'max(env(safe-area-inset-top), 16px) 20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <h1 className="serif" style={{ fontSize: 26, color: 'var(--gold)', fontStyle: 'italic', fontWeight: 300 }}>Cellar</h1>
         {user
           ? <div onClick={signOut} title="Sign out" style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'var(--navy)', cursor: 'pointer' }}>{initials}</div>
