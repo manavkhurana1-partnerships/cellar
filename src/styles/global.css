@@ -46,6 +46,7 @@ body {
   max-width: 480px;
   margin: 0 auto;
   position: relative;
+  padding-top: env(safe-area-inset-top);
 }
 
 .serif { font-family: 'Cormorant Garamond', Georgia, serif; }
