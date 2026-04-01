@@ -1,15 +1,21 @@
 import Tesseract from 'tesseract.js'
 
 const API_URL = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-sonnet-4-20250514'
+const MODEL = 'claude-haiku-4-5-20251001'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Cache to avoid repeat API calls ──────────────────────────
+const cache = new Map<string, any>()
 
+function getCacheKey(type: string, input: string) {
+  return type + ':' + input.slice(0, 100).toLowerCase().trim()
+}
+
+// ─── Claude caller ─────────────────────────────────────────────
 async function callClaude(messages: any[], tools?: any[]) {
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('Missing VITE_ANTHROPIC_API_KEY')
 
-  const body: any = { model: MODEL, max_tokens: 1024, messages }
+  const body: any = { model: MODEL, max_tokens: 800, messages }
   if (tools) body.tools = tools
 
   const res = await fetch(API_URL, {
@@ -25,7 +31,7 @@ async function callClaude(messages: any[], tools?: any[]) {
 
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`API error ${res.status}: ${err}`)
+    throw new Error('API error ' + res.status + ': ' + err)
   }
   return res.json()
 }
@@ -40,150 +46,127 @@ function parseJSON(text: string) {
   }
 }
 
-// ─── Free OCR via Tesseract.js ─────────────────────────────────────────────
-
+// ─── Free OCR (no AI cost) ─────────────────────────────────────
 export async function runOCR(
   imageData: string,
   mimeType: string,
   onProgress?: (msg: string) => void
 ): Promise<string> {
-  onProgress?.('Running OCR on label...')
-  const dataUrl = `data:${mimeType};base64,${imageData}`
-
+  onProgress?.('Scanning label text (free)...')
+  const dataUrl = 'data:' + mimeType + ';base64,' + imageData
   const result = await Tesseract.recognize(dataUrl, 'eng', {
     logger: m => {
       if (m.status === 'recognizing text') {
-        const pct = Math.round((m.progress ?? 0) * 100)
-        onProgress?.(`Reading label... ${pct}%`)
+        onProgress?.('Reading label... ' + Math.round((m.progress ?? 0) * 100) + '%')
       }
     },
   })
-
   return result.data.text.trim()
 }
 
-// ─── Label extraction (OCR → Claude text only, much cheaper) ──────────────
-
+// ─── Label scan: free OCR → cheap text-only Claude ─────────────
 export async function extractLabel(
   base64: string,
   mimeType: string = 'image/jpeg',
   onProgress?: (msg: string) => void
 ): Promise<any> {
-  // Step 1 — free OCR
-  onProgress?.('Scanning label text...')
+  onProgress?.('Scanning label...')
   const ocrText = await runOCR(base64, mimeType, onProgress)
 
   if (!ocrText || ocrText.length < 5) {
-    throw new Error('Could not read text from label. Try a clearer photo.')
+    throw new Error('Could not read label text. Try a clearer, well-lit photo.')
   }
 
-  // Step 2 — send text only to Claude (much cheaper than image)
+  // Check cache
+  const key = getCacheKey('label', ocrText)
+  if (cache.has(key)) {
+    onProgress?.('Found in cache!')
+    return cache.get(key)
+  }
+
   onProgress?.('Identifying wine...')
   const data = await callClaude([{
     role: 'user',
-    content: `Here is raw OCR text extracted from a wine bottle label:
-
-"${ocrText}"
-
-Based on this text, identify and structure the wine details. Return ONLY valid JSON (no markdown, no backticks):
-{
-  "name": "wine name",
-  "winery": "producer name",
-  "vintage": "year as string",
-  "varietal": "grape variety",
-  "region": "region or appellation",
-  "country": "country",
-  "type": "one of: red, white, rose, sparkling, dessert",
-  "body": "one of: light, medium, full",
-  "sweetness": "one of: dry, off-dry, sweet",
-  "flavorProfile": ["note1", "note2", "note3", "note4"],
-  "description": "1-2 sentence tasting description"
-}`
+    content: 'Raw OCR text from wine label: "' + ocrText + '"\n\nReturn ONLY valid JSON (no markdown):\n{"name":"wine name","winery":"producer","vintage":"year","varietal":"grape","region":"region","country":"country","type":"red|white|rose|sparkling|dessert","body":"light|medium|full","sweetness":"dry|off-dry|sweet","flavorProfile":["note1","note2","note3","note4"],"description":"1-2 sentence tasting note"}'
   }])
 
   const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '{}'
-  return parseJSON(text)
+  const result = parseJSON(text)
+  cache.set(key, result)
+  return result
 }
 
-// ─── UPC barcode lookup (completely free) ─────────────────────────────────
-
+// ─── UPC lookup — free databases first, no AI cost ─────────────
 export async function lookupUPC(upc: string): Promise<any> {
-  // Try Open Food Facts first (free, no key needed)
+  const clean = upc.replace(/\D/g, '')
+
+  // Check cache
+  const key = getCacheKey('upc', clean)
+  if (cache.has(key)) return cache.get(key)
+
+  // Try UPC Item DB (free)
   try {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${upc}.json`)
+    const res = await fetch('https://api.upcitemdb.com/prod/trial/lookup?upc=' + clean)
     const data = await res.json()
-    if (data.status === 1 && data.product) {
-      const p = data.product
-      const name = p.product_name || p.product_name_en || ''
-      if (name) {
-        return await enrichWineFromName(name)
-      }
+    const item = data.items?.[0]
+    if (item?.title) {
+      const result = await enrichWineFromName(item.title + ' ' + (item.brand ?? ''))
+      cache.set(key, result)
+      return result
     }
   } catch { /* fall through */ }
 
-  // Try UPC Item DB (free tier)
+  // Try Open Food Facts (free)
   try {
-    const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${upc}`)
+    const res = await fetch('https://world.openfoodfacts.org/api/v0/product/' + clean + '.json')
     const data = await res.json()
-    if (data.items?.[0]) {
-      const item = data.items[0]
-      const name = item.title || item.brand || ''
-      if (name) {
-        return await enrichWineFromName(name)
-      }
+    if (data.status === 1 && data.product?.product_name) {
+      const result = await enrichWineFromName(data.product.product_name)
+      cache.set(key, result)
+      return result
     }
   } catch { /* fall through */ }
 
-  throw new Error('Could not find this wine by barcode. Try scanning the label instead.')
+  throw new Error('Wine not found in barcode database. Try scanning the label instead.')
 }
 
-// ─── Enrich wine name → full structured data via Claude ───────────────────
-
+// ─── Enrich name → structured wine data ───────────────────────
 async function enrichWineFromName(rawName: string): Promise<any> {
+  const key = getCacheKey('enrich', rawName)
+  if (cache.has(key)) return cache.get(key)
+
   const data = await callClaude([{
     role: 'user',
-    content: `Based on this wine product name: "${rawName}"
-
-Identify and structure the wine details. Return ONLY valid JSON (no markdown, no backticks):
-{
-  "name": "wine name",
-  "winery": "producer name",
-  "vintage": "year as string or empty",
-  "varietal": "grape variety",
-  "region": "region or appellation",
-  "country": "country",
-  "type": "one of: red, white, rose, sparkling, dessert",
-  "body": "one of: light, medium, full",
-  "sweetness": "one of: dry, off-dry, sweet",
-  "flavorProfile": ["note1", "note2", "note3", "note4"],
-  "description": "1-2 sentence tasting description"
-}`
+    content: 'Wine product: "' + rawName + '"\n\nReturn ONLY valid JSON (no markdown):\n{"name":"wine name","winery":"producer","vintage":"year","varietal":"grape","region":"region","country":"country","type":"red|white|rose|sparkling|dessert","body":"light|medium|full","sweetness":"dry|off-dry|sweet","flavorProfile":["note1","note2","note3","note4"],"description":"1-2 sentence tasting note"}'
   }])
 
   const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '{}'
-  return parseJSON(text)
+  const result = parseJSON(text)
+  cache.set(key, result)
+  return result
 }
 
-// ─── Reviews ──────────────────────────────────────────────────────────────
-
+// ─── Reviews — cached ──────────────────────────────────────────
 export async function fetchReviews(wine: { name: string; vintage?: string; winery?: string }) {
+  const key = getCacheKey('reviews', (wine.name ?? '') + (wine.vintage ?? '') + (wine.winery ?? ''))
+  if (cache.has(key)) return cache.get(key)
+
   const data = await callClaude(
     [{
       role: 'user',
-      content: `Find reviews for "${wine.name}" ${wine.vintage ?? ''} by ${wine.winery ?? ''}. Return ONLY a JSON array (no markdown):
-[{"source": "Wine Spectator", "score": 92, "quote": "one sentence"},
- {"source": "Wine Enthusiast", "score": 90, "quote": "one sentence"},
- {"source": "Vivino", "score": 91, "quote": "one sentence"},
- {"source": "Decanter", "score": 89, "quote": "one sentence"}]`
+      content: 'Find reviews for "' + wine.name + '" ' + (wine.vintage ?? '') + ' by ' + (wine.winery ?? '') + '. Return ONLY JSON array (no markdown): [{"source":"Wine Spectator","score":92,"quote":"one sentence"},{"source":"Wine Enthusiast","score":90,"quote":"one sentence"},{"source":"Vivino","score":91,"quote":"one sentence"},{"source":"Decanter","score":89,"quote":"one sentence"}]'
     }],
     [{ type: 'web_search_20250305', name: 'web_search' }]
   )
   const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '[]'
-  try { return parseJSON(text) } catch { return [] }
+  try {
+    const result = parseJSON(text)
+    cache.set(key, result)
+    return result
+  } catch { return [] }
 }
 
-// ─── Sommelier recommendations ────────────────────────────────────────────
-
+// ─── Sommelier recommendations ─────────────────────────────────
 export async function getRecommendations(
   prefs: Record<string, string[]>,
   inventory: any[]
@@ -205,58 +188,17 @@ export async function getRecommendations(
 
   const data = await callClaude([{
     role: 'user',
-    content: `You are a master sommelier with decades of experience pairing wines for events. Be STRICT and PRECISE.
-
-EVENT PREFERENCES:
-${Object.entries(prefs)
-  .filter(([, vals]) => vals && (vals as string[]).length > 0)
-  .map(([key, vals]) => `- ${key}: ${(vals as string[]).join(', ')}`)
-  .join('\n')}
-
-WINE INVENTORY:
-${JSON.stringify(summary, null, 2)}
-
-YOUR TASK:
-Carefully analyze EVERY wine against ALL the event preferences above. Consider:
-
-1. TIME OF DAY — Light, crisp whites and sparkling suit daytime. Bold reds suit evening/late night.
-2. SETTING — Formal events call for structured, classic wines. Casual means easy-drinking styles.
-3. FOOD PAIRING — This is critical. Specific rules:
-   - Red meat → full-bodied reds like Cabernet, Malbec, Syrah
-   - Seafood → crisp whites like Sauvignon Blanc, Pinot Grigio, Chablis. NEVER recommend full red with seafood.
-   - Charcuterie & Cheese → versatile: Champagne, Pinot Noir, Chardonnay
-   - Spicy food → off-dry or sweet wines like Riesling, Gewürztraminer. AVOID high tannin reds.
-   - Pasta & Grains → medium reds like Sangiovese, Barbera, or medium whites
-   - Desserts → sweet wines only. NEVER recommend dry wines with desserts.
-   - No food → any style works, prioritize by occasion and time
-4. OCCASION — Romantic Evening: elegant, complex wines. Celebration: sparkling preferred. Business/Networking: crowd-pleasing, not too bold. Casual Hangout: easy-drinking, approachable.
-5. BODY PREFERENCE — If user says Light, DO NOT recommend Full-bodied wines. Respect this strictly.
-6. SWEETNESS PREFERENCE — If user says Dry, DO NOT recommend sweet wines. Be strict.
-
-STRICT RULES:
-- Only recommend wines that genuinely match the event. 
-- If a wine conflicts with ANY critical factor (especially food pairing or sweetness), exclude it completely.
-- If NO wines in the inventory are appropriate, return an empty array [].
-- Do NOT force recommendations just to have something to suggest.
-- Maximum 3 recommendations, minimum 1 (or 0 if nothing fits).
-- Rank by best overall fit across ALL factors, not just one.
-
-Return ONLY a JSON array (no markdown, no explanation):
-[{
-  "id": "exact_wine_id",
-  "matchScore": 95,
-  "reason": "3-4 sentences explaining specifically why this wine fits THIS event — mention the food, occasion, time, and body/sweetness match explicitly",
-  "whyNotOthers": "1 sentence on why this ranks above the other options",
-  "reviewHighlight": "1 sentence about the wine's quality or critical reception"
-}]
-
-If nothing fits, return exactly: []`
+    content: 'You are a master sommelier. Be STRICT.\n\nEVENT:\n' +
+      Object.entries(prefs).filter(([, v]) => v?.length).map(([k, v]) => '- ' + k + ': ' + (v as string[]).join(', ')).join('\n') +
+      '\n\nINVENTORY:\n' + JSON.stringify(summary) +
+      '\n\nRules:\n- Only recommend wines that genuinely fit ALL factors\n- Red meat→full reds, Seafood→crisp whites NEVER red, Desserts→sweet only, Spicy→off-dry\n- Respect body and sweetness preferences strictly\n- Return [] if nothing fits\n\nReturn ONLY JSON array (no markdown):\n[{"id":"wine_id","matchScore":95,"reason":"3-4 sentences why it fits this specific event","whyNotOthers":"1 sentence","reviewHighlight":"1 sentence about quality"}]'
   }])
 
   const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '[]'
   try { return parseJSON(text) } catch { return [] }
 }
 
+// ─── External buy recommendations ─────────────────────────────
 export async function getExternalRecommendations(
   prefs: Record<string, string[]>,
   inventory: any[]
@@ -265,38 +207,10 @@ export async function getExternalRecommendations(
 
   const data = await callClaude([{
     role: 'user',
-    content: `You are a master sommelier. A user is hosting an event with these preferences:
-
-${Object.entries(prefs)
-  .filter(([, vals]) => vals && (vals as string[]).length > 0)
-  .map(([key, vals]) => `- ${key}: ${(vals as string[]).join(', ')}`)
-  .join('\n')}
-
-They already own: ${inventoryNames || 'none'}
-
-Recommend exactly 3 specific wines to BUY that perfectly match ALL the event factors above. Do NOT recommend wines they already own.
-
-For each wine, construct a Total Wine search URL in this format:
-https://www.totalwine.com/search/all?text=WINE+NAME+HERE
-
-Replace spaces with + in the search query. For example:
-- "Caymus Cabernet Sauvignon" → https://www.totalwine.com/search/all?text=Caymus+Cabernet+Sauvignon
-- "Kim Crawford Sauvignon Blanc" → https://www.totalwine.com/search/all?text=Kim+Crawford+Sauvignon+Blanc
-
-Return ONLY a valid JSON array (no markdown, no backticks, no explanation outside the JSON):
-[{
-  "name": "full wine name",
-  "winery": "producer name",
-  "vintage": "year or NV",
-  "type": "red or white or rose or sparkling or dessert",
-  "varietal": "grape variety",
-  "region": "region, country",
-  "price": "estimated price e.g. $18-25",
-  "rating": "e.g. 92 pts Wine Spectator",
-  "reason": "3-4 sentences explaining exactly why this wine is perfect for THIS specific event — mention the food pairing, occasion, time of day, and body/sweetness match explicitly",
-  "purchaseUrl": "https://www.totalwine.com/search/all?text=Wine+Name+Here",
-  "retailer": "Total Wine & More"
-}]`
+    content: 'Master sommelier. Event:\n' +
+      Object.entries(prefs).filter(([, v]) => v?.length).map(([k, v]) => '- ' + k + ': ' + (v as string[]).join(', ')).join('\n') +
+      '\n\nUser owns: ' + (inventoryNames || 'none') +
+      '\n\nRecommend 3 wines to BUY that match ALL event factors. Build Total Wine search URLs like: https://www.totalwine.com/search/all?text=Wine+Name+Here\n\nReturn ONLY JSON array (no markdown):\n[{"name":"wine name","winery":"producer","vintage":"year or NV","type":"red|white|rose|sparkling|dessert","varietal":"grape","region":"region, country","price":"$XX-XX","rating":"XX pts Source","reason":"3-4 sentences why perfect for this event","purchaseUrl":"https://www.totalwine.com/search/all?text=Wine+Name","retailer":"Total Wine & More"}]'
   }])
 
   const text = data.content?.find((b: any) => b.type === 'text')?.text ?? '[]'
