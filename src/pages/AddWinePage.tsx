@@ -60,39 +60,53 @@ export default function AddWinePage() {
     setScanning(false)
   }
 
-  const startBarcodeCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-      })
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        videoRef.current.play()
-      }
-      setCameraActive(true)
-      setScanning(true)
-      scanBarcodeLoop()
-    } catch (e) {
-      toast.error('Camera access denied. Please type the barcode number manually.')
+ const startBarcodeCamera = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }
+    })
+    streamRef.current = stream
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream
+      await videoRef.current.play()
     }
+    setCameraActive(true)
+    setScanning(true)
+  } catch (e) {
+    toast.error('Camera access denied. Please type the barcode number manually.')
+  }
+}
+
+const captureAndDecodeBarcode = async () => {
+  if (!videoRef.current) return
+  const canvas = document.createElement('canvas')
+  canvas.width = videoRef.current.videoWidth
+  canvas.height = videoRef.current.videoHeight
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(videoRef.current, 0, 0)
+
+  // Load ZXing
+  if (!(window as any).ZXing) {
+    const script = document.createElement('script')
+    script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js'
+    await new Promise<void>(r => { script.onload = () => r(); document.head.appendChild(script) })
   }
 
-  const scanBarcodeLoop = async () => {
-    // Load QuaggaJS for barcode scanning
-    if (!(window as any).Quagga) {
-      await new Promise<void>((resolve, reject) => {
-        const script = document.createElement('script')
-        script.src = 'https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js'
-        script.onload = () => resolve()
-        script.onerror = () => reject(new Error('Failed to load barcode library'))
-        document.head.appendChild(script)
-      }).catch(() => {
-        toast.error('Could not load barcode scanner. Please type the barcode manually.')
-        stopCamera()
-        return
-      })
+  try {
+    const ZXing = (window as any).ZXing
+    const reader = new ZXing.BrowserMultiFormatReader()
+    const result = await reader.decodeFromCanvas(canvas)
+    if (result?.text) {
+      stopCamera()
+      setUpcInput(result.text)
+      handleUPCLookup(result.text)
+    } else {
+      toast.error('No barcode detected. Try holding still and tapping Scan again.')
     }
+  } catch {
+    toast.error('No barcode found. Move closer and tap Scan again.')
+  }
+}
 
     const Quagga = (window as any).Quagga
     if (!Quagga || !videoRef.current) return
@@ -326,9 +340,12 @@ export default function AddWinePage() {
                       <div style={{ width: '70%', height: 80, border: '2px solid var(--gold)', borderRadius: 8, boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }} />
                     </div>
                     <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '10px 16px', background: 'rgba(0,0,0,0.6)', textAlign: 'center' }}>
-                      <p style={{ fontSize: 12, color: 'var(--gold)' }}>
-                        {scanning ? 'Scanning... point at barcode' : 'Initializing...'}
-                      </p>
+                    <button
+  onClick={captureAndDecodeBarcode}
+  style={{ background: 'var(--gold)', color: 'var(--navy)', border: 'none', borderRadius: 'var(--r-full)', padding: '8px 24px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+>
+  📸 Scan Barcode
+</button>
                     </div>
                     <button
                       onClick={stopCamera}
