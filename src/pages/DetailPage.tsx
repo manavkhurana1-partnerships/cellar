@@ -56,6 +56,17 @@ export default function DetailPage() {
           color: 'var(--text)', fontSize: 22, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>‹</button>
+        <button
+  onClick={() => navigate('/wine/' + wine.id + '/edit')}
+  style={{
+    position: 'absolute', top: 16, right: 16, background: 'rgba(13,27,42,0.8)',
+    border: '1px solid var(--border)', borderRadius: 'var(--r-full)',
+    color: 'var(--gold)', fontSize: 12, fontWeight: 600,
+    padding: '7px 14px', cursor: 'pointer', backdropFilter: 'blur(8px)',
+  }}
+>
+  Edit
+</button>
         {topScore && (
           <div style={{ position: 'absolute', bottom: 14, right: 14, background: 'rgba(13,27,42,0.88)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '8px 14px', textAlign: 'center' }}>
             <div className="serif" style={{ fontSize: 26, color: 'var(--gold)', lineHeight: 1 }}>{topScore}</div>
