@@ -8,6 +8,7 @@ import DetailPage from './pages/DetailPage'
 import SommelierPage from './pages/SommelierPage'
 import AuthPage from './pages/AuthPage'
 import './styles/global.css'
+import EditWinePage from './pages/EditWinePage'
 
 function AppShell() {
   const { loading } = useAuth()
@@ -25,7 +26,8 @@ function AppShell() {
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/" element={<CellarPage />} />
         <Route path="/add" element={<AddWinePage />} />
-        <Route path="/wine/:id" element={<DetailPage />} />
+<Route path="/wine/:id" element={<DetailPage />} />
+<Route path="/wine/:id/edit" element={<EditWinePage />} />
         <Route path="/sommelier" element={<SommelierPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
