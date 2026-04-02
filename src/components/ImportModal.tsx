@@ -146,32 +146,49 @@ export default function ImportModal({ onClose, onDone }: ImportModalProps) {
   const [progress, setProgress] = useState(0)
   const [importedCount, setImportedCount] = useState(0)
 
-  const handleCTImport = async () => {
-    if (!ctUsername.trim() || !ctPassword.trim()) {
-      toast.error('Enter your CellarTracker username and password')
-      return
-    }
-    setCtLoading(true)
-    try {
-      const res = await fetch(
-        '/api/cellartracker?username=' + encodeURIComponent(ctUsername) +
-        '&password=' + encodeURIComponent(ctPassword)
-      )
-      if (!res.ok) {
-        const err = await res.json()
+const handleCTImport = async () => {
+  if (!ctUsername.trim() || !ctPassword.trim()) {
+    toast.error('Enter your CellarTracker username and password')
+    return
+  }
+  setCtLoading(true)
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 20000)
+
+    const res = await fetch(
+      '/api/cellartracker?username=' + encodeURIComponent(ctUsername) +
+      '&password=' + encodeURIComponent(ctPassword),
+      { signal: controller.signal }
+    )
+
+    clearTimeout(timeout)
+
+    const text = await res.text()
+
+    if (!res.ok) {
+      try {
+        const err = JSON.parse(text)
         throw new Error(err.error || 'Failed to connect to CellarTracker')
+      } catch {
+        throw new Error('CellarTracker returned an error. Check your username and password.')
       }
-      const csv = await res.text()
-      const wines = detectAndParse(csv)
-      if (!wines.length) throw new Error('No wines found in your CellarTracker cellar')
-      setParsed(wines)
-      setSelected(new Set(wines.map((_, i) => i)))
-      setStage('preview')
-    } catch (e: any) {
+    }
+
+    const wines = detectAndParse(text)
+    if (!wines.length) throw new Error('No wines found. Your CellarTracker cellar may be empty.')
+    setParsed(wines)
+    setSelected(new Set(wines.map((_, i) => i)))
+    setStage('preview')
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      toast.error('Request timed out. CellarTracker may be slow — try again.')
+    } else {
       toast.error(e.message || 'Could not connect to CellarTracker')
     }
-    setCtLoading(false)
   }
+  setCtLoading(false)
+}
 
   const handleFile = (file: File) => {
     const reader = new FileReader()
